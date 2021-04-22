@@ -7,13 +7,15 @@ class Names:
     def __init__(self):
         self.cases_dir = {"Mie02": "./data/zio/Mie_case02_retry_20200516_after_sorting/",
                           "Mie03": "./data/zio/Mie_case03_WL204_3rd_growing_after_sorting/",
-                          "Mie02_10": "./data/zio/M02_10slices_zio/"}
+                          "Mie02_10": "./data/zio/M02_10slices_zio/",
+                          "Mie03_twin": "./data/zio/M03_2020_twins_zio_AS/"}
 
         self.pressure_file = {"Mie02": "M02_Pressure_100.csv"}
 
         self.cases_name_rule = {"Mie02": "Mie_case02_{}.csv",
                                 "Mie03": "MIe_case03_a_{}.csv",
-                                "Mie02_10": "Mie_case02_{}.csv"}
+                                "Mie02_10": "Mie_case02_{}.csv",
+                                "Mie03_twin": "M03_2020_{}.csv"}
 
         self.cases_cardio_circle = {"Mie02": 0.804,
                                     "Mie03": 0.804,
@@ -200,7 +202,8 @@ class DeepAnalysis(Analysis):
                              "pressure": None,
                              "m": None,
                              "mu": None,
-                             "k": None}
+                             "k": None,
+                             "data": {}}
         self.pressure = {}
         self.purified_pressure = {}
         self.load_pressure()
@@ -269,7 +272,8 @@ class DeepAnalysis(Analysis):
 
         pass
 
-    def analysis_ode(self, point_index=0):
+    def analysis_ode(self, point_index=29171):
+        self.test = []
         print("Here is DataManager.Analysis.DeepAnalysis.analysis_ode!")
         t = 0.01
         import numpy as np
@@ -279,33 +283,56 @@ class DeepAnalysis(Analysis):
             self.purified_pressure[float(file[:-4])] = "./data/pressure/" + self.data_name + "_purified/" + file
         data_index = list(self.purified_pressure.keys())
         data_index.sort()
-        A = np.zeros([98, 2])
-        B = np.zeros([98, 1])
 
-        for step in range(len(data_index) - 2):
-            point_cloud1 = []
-            point_cloud2 = []
-            point_cloud3 = []
-            pressure = []
-            normal = []
-            with open(self.purified_pressure[data_index[step]], "r") as f:
-                csv_reader = csv.reader(f)
-                for row in csv_reader:
-                    point_cloud1.append(row[:3])
-                f.close()
-            with open(self.purified_pressure[data_index[step + 1]], "r") as f:
-                csv_reader = csv.reader(f)
-                for row in csv_reader:
-                    point_cloud2.append(row[:3])
-                    pressure.append(float(row[3]))
-                    normal.append(row[4:])
-                f.close()
-            with open(self.purified_pressure[data_index[step + 2]], "r") as f:
-                csv_reader = csv.reader(f)
-                for row in csv_reader:
-                    point_cloud3.append(row[:3])
-                f.close()
+        if self.full_dataset["data"] != {}:
+            pass
+        else:
+            for step in range(len(data_index)):
+                data = []
+                with open(self.purified_pressure[data_index[step]], "r") as f:
+                    csv_reader = csv.reader(f)
+                    for row in csv_reader:
+                        data.append(row)
+                    f.close()
+                self.full_dataset["data"][step] = np.array(data, dtype=np.float32)
+        for index in range(point_index):
+            A = np.zeros([98, 2])
+            B = np.zeros([98, 1])
+            for time_step in range(len(self.purified_pressure.keys())-2):
+                point_cloud1 = self.full_dataset["data"][time_step][index, :3]
+                point_cloud2 = self.full_dataset["data"][time_step+1][index, :3]
+                point_cloud3 = self.full_dataset["data"][time_step+2][index, :3]
+                pressure = self.full_dataset["data"][time_step+1][index, 3] * 0.0001
+                normal = self.full_dataset["data"][time_step+1][index, 4:]
+                # pressure assert to have same direction with a
+                dx1 = point_cloud2 - point_cloud1
+                dx2 = point_cloud3 - point_cloud2
+                dx = 0.5 * (dx1 + dx2)
+                v = dx / t
+                a_ = (dx2 - dx1) / t ** 2
+                A[time_step, 0] = np.linalg.norm(a_) * 1
+                A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
+                #A[time_step, 2] = np.linalg.norm(dx) * ((a_ / np.linalg.norm(a_)) @ (dx / np.linalg.norm(dx)))
+                B[time_step] = np.linalg.norm(pressure * normal @ (a_ / np.linalg.norm(a_)))
+            ans = np.linalg.solve(A.T @ A, A.T @ B)
+            print(ans, index)
+            self.test.append(ans)
+        import csv
+        with open("testm.csv", "w", newline="") as f:
+            csv_writer = csv.writer(f)
+            for row in a.test:
+                csv_writer.writerow([float(row[0])])
+            f.close()
+        with open("testmu.csv", "w", newline="") as f:
+            csv_writer = csv.writer(f)
+            for row in a.test:
+                csv_writer.writerow([float(row[1])])
+            f.close()
+            
+            
+            
 
+        """
             point_cloud1 = np.array(point_cloud1, dtype=np.float32)
             point_cloud2 = np.array(point_cloud2, dtype=np.float32)
             point_cloud3 = np.array(point_cloud3, dtype=np.float32)
@@ -318,14 +345,15 @@ class DeepAnalysis(Analysis):
             v = dx / t
             a_ = (dx2 - dx1) / t ** 2
             A[step, 0] = np.linalg.norm(a_[point_index])
-            A[step, 1] = np.linalg.norm(v[point_index])
-            #A[step, 2] = np.linalg.norm(dx[point_index])
+            # A[step, 1] = np.linalg.norm(v[point_index])
+            # A[step, 2] = np.linalg.norm(dx[point_index])
             B[step] = np.linalg.norm(pressure[point_index] * normal[point_index] @
                                      (a_[point_index] / np.linalg.norm(a_[point_index])))
         print(np.linalg.solve(A.T@A, A.T@B))
 
         # TODO ode model
         pass
+        """
 
     def analysis_ensemble_kalman_filter(self):
         self.dataset = self.dataset
@@ -397,5 +425,5 @@ class Gui:
 
 
 a = DeepAnalysis("Mie02")
-#a.analysis_ode()
+a.analysis_ode()
 Console()
