@@ -22,8 +22,8 @@ for step, item in enumerate(point_files):
     point_cloud = []
     with open(point_dir + "/" + item, "r") as f:
         csv_reader = csv.reader(f)
-        for step, row in enumerate(csv_reader):
-            if step == int(time_step) + 1:
+        for slices, row in enumerate(csv_reader):
+            if slices == int(time_step) + 1:
                 temp = row[2:]
                 for i in range(len(temp) // 3):
                     point_cloud.append(temp[3 * i: 3 * i + 3])
