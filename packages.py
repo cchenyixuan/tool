@@ -296,9 +296,9 @@ class DeepAnalysis(Analysis):
                     f.close()
                 self.full_dataset["data"][step] = np.array(data, dtype=np.float32)
         for index in range(point_index):
-            A = np.zeros([98, 2])
-            B = np.zeros([98, 1])
-            for time_step in range(len(self.purified_pressure.keys())-2):
+            A = np.zeros([92, 1])
+            B = np.zeros([92, 1])
+            for time_step in range(len(self.purified_pressure.keys())-2-6):
                 point_cloud1 = self.full_dataset["data"][time_step][index, :3]
                 point_cloud2 = self.full_dataset["data"][time_step+1][index, :3]
                 point_cloud3 = self.full_dataset["data"][time_step+2][index, :3]
@@ -311,49 +311,28 @@ class DeepAnalysis(Analysis):
                 v = dx / t
                 a_ = (dx2 - dx1) / t ** 2
                 A[time_step, 0] = np.linalg.norm(a_) * 1
-                A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
+                #A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
                 #A[time_step, 2] = np.linalg.norm(dx) * ((a_ / np.linalg.norm(a_)) @ (dx / np.linalg.norm(dx)))
                 B[time_step] = np.linalg.norm(pressure * normal @ (a_ / np.linalg.norm(a_)))
             ans = np.linalg.solve(A.T @ A, A.T @ B)
-            print(ans, index)
+            #print(ans, index)
             self.test.append(ans)
         import csv
-        with open("testm.csv", "w", newline="") as f:
+        base_data = self.full_dataset["data"][0][:, :3]
+        with open("test_m_only.csv", "w", newline="") as f:
             csv_writer = csv.writer(f)
-            for row in a.test:
-                csv_writer.writerow([float(row[0])])
+            for step, row in enumerate(zip(base_data, self.test)):
+                row = [float(item) for sublist in row for item in sublist]
+                csv_writer.writerow(row)
+                #csv_writer.writerow([base_data[step]+[float(row[0]), float(row[1])]])
             f.close()
-        with open("testmu.csv", "w", newline="") as f:
-            csv_writer = csv.writer(f)
-            for row in a.test:
-                csv_writer.writerow([float(row[1])])
-            f.close()
-            
+
             
             
 
-        """
-            point_cloud1 = np.array(point_cloud1, dtype=np.float32)
-            point_cloud2 = np.array(point_cloud2, dtype=np.float32)
-            point_cloud3 = np.array(point_cloud3, dtype=np.float32)
-            pressure = np.array(pressure, dtype=np.float32) * 0.0001
-            normal = np.array(normal, dtype=np.float32)
-            # pressure assert to have same direction with a
-            dx1 = point_cloud2 - point_cloud1
-            dx2 = point_cloud3 - point_cloud2
-            dx = 0.5 * (dx1 + dx2)
-            v = dx / t
-            a_ = (dx2 - dx1) / t ** 2
-            A[step, 0] = np.linalg.norm(a_[point_index])
-            # A[step, 1] = np.linalg.norm(v[point_index])
-            # A[step, 2] = np.linalg.norm(dx[point_index])
-            B[step] = np.linalg.norm(pressure[point_index] * normal[point_index] @
-                                     (a_[point_index] / np.linalg.norm(a_[point_index])))
-        print(np.linalg.solve(A.T@A, A.T@B))
 
         # TODO ode model
         pass
-        """
 
     def analysis_ensemble_kalman_filter(self):
         self.dataset = self.dataset
