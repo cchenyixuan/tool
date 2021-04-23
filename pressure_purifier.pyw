@@ -4,7 +4,7 @@ import csv
 import sys
 
 
-case_name, point_dir, time_step, pressure_dir = sys.argv[1:]
+case_name, point_dir, time_step, pressure_dir = sys.argv[1:5]
 
 
 def create_dir(directory):

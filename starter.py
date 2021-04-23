@@ -11,6 +11,7 @@ def solve(**kwargs):
     start, end = kwargs["time_step"]
     case_dir = kwargs["case_dir"]
     pressure = kwargs["pressure"]  # dict{i:path_i}
+    solver = "pressure_purifier.pyw"
     for i in range(start, end + 1):
         while True:
             running_pyw = os.popen('wmic process get description, processid').read()
@@ -23,7 +24,7 @@ def solve(**kwargs):
         with open('./temp.bat', 'w') as file:
             file.write('set current_path=%~dp0')
             file.write('\n')
-            file.write('start  %current_path%\\pressure_purifier.py %1 %2 %3 %4')
+            file.write('start  %current_path%\\{} %1 %2 %3 %4'.format(solver))
             file.close()
         with open('./global.json', 'w') as file:
             json.dump(prof, file)

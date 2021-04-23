@@ -241,6 +241,8 @@ class DeepAnalysis(Analysis):
         import starter
         starter.solve(time_step=time_step, case_name=self.data_name,
                       case_dir=self.cases_dir[self.data_name], pressure=self.pressure, background="bear")
+        import distance_clip_starter
+
         pass
 
     def advanced_show(self, **kwargs):
