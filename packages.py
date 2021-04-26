@@ -207,6 +207,7 @@ class DeepAnalysis(Analysis):
         self.pressure = {}
         self.purified_pressure = {}
         self.load_pressure()
+        self.ode_data = []
 
     def load_pressure(self):
         """load pressure data"""
@@ -237,12 +238,11 @@ class DeepAnalysis(Analysis):
 
     def purify_pressure(self, time_step=None):
         if time_step is None:
-            time_step = [0, 99]
+            time_step = [i for i in range(100)]
         import starter
-        starter.solve(time_step=time_step, case_name=self.data_name,
+        starter.solve(solver="pressure_purifier.pyw", time_step=time_step,
+                      case_name=self.data_name, slices=list(self.data.keys()),
                       case_dir=self.cases_dir[self.data_name], pressure=self.pressure, background="bear")
-        import distance_clip_starter
-
         pass
 
     def advanced_show(self, **kwargs):
@@ -275,7 +275,6 @@ class DeepAnalysis(Analysis):
         pass
 
     def analysis_ode(self, point_index=29171):
-        self.test = []
         print("Here is DataManager.Analysis.DeepAnalysis.analysis_ode!")
         t = 0.01
         import numpy as np
@@ -298,9 +297,9 @@ class DeepAnalysis(Analysis):
                     f.close()
                 self.full_dataset["data"][step] = np.array(data, dtype=np.float32)
         for index in range(point_index):
-            A = np.zeros([92, 1])
-            B = np.zeros([92, 1])
-            for time_step in range(len(self.purified_pressure.keys())-2-6):
+            A = np.zeros([98, 2])
+            B = np.zeros([98, 1])
+            for time_step in range(len(self.purified_pressure.keys())-2):
                 point_cloud1 = self.full_dataset["data"][time_step][index, :3]
                 point_cloud2 = self.full_dataset["data"][time_step+1][index, :3]
                 point_cloud3 = self.full_dataset["data"][time_step+2][index, :3]
@@ -313,20 +312,18 @@ class DeepAnalysis(Analysis):
                 v = dx / t
                 a_ = (dx2 - dx1) / t ** 2
                 A[time_step, 0] = np.linalg.norm(a_) * 1
-                #A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
+                A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
                 #A[time_step, 2] = np.linalg.norm(dx) * ((a_ / np.linalg.norm(a_)) @ (dx / np.linalg.norm(dx)))
                 B[time_step] = np.linalg.norm(pressure * normal @ (a_ / np.linalg.norm(a_)))
             ans = np.linalg.solve(A.T @ A, A.T @ B)
-            #print(ans, index)
-            self.test.append(ans)
+            self.ode_data.append(ans)
         import csv
         base_data = self.full_dataset["data"][0][:, :3]
-        with open("test_m_only.csv", "w", newline="") as f:
+        with open("./"+self.data_name+"/mass-redu.csv", "w", newline="") as f:
             csv_writer = csv.writer(f)
-            for step, row in enumerate(zip(base_data, self.test)):
+            for step, row in enumerate(zip(base_data, self.ode_data)):
                 row = [float(item) for sublist in row for item in sublist]
                 csv_writer.writerow(row)
-                #csv_writer.writerow([base_data[step]+[float(row[0]), float(row[1])]])
             f.close()
 
             
@@ -405,6 +402,5 @@ class Gui:
         root.mainloop()
 
 
-a = DeepAnalysis("Mie02")
-a.analysis_ode()
+a = Analysis("Mie02")
 Console()
