@@ -3,13 +3,12 @@ import csv
 import numpy as np
 import sys
 
-
-#case_name, case_dir, cut_slice, time_step, pressure_dir = sys.argv[1:]
-case_name="Mie02"
-case_dir="./data/zio/Mie_case02_retry_20200516_after_sorting/"
-cut_slice=17
-time_step=33
-pressure_dir='./data/pressure/Mie02/0.440257.csv'
+# case_name, case_dir, cut_slice, time_step, pressure_dir = sys.argv[1:]
+case_name = "Mie02"
+case_dir = "./data/zio/Mie_case02_retry_20200516_after_sorting/"
+cut_slice = 17
+time_step = 33
+pressure_dir = './data/pressure/Mie02/0.440257.csv'
 
 
 def create_dir(directory):
@@ -36,7 +35,7 @@ for step, item in enumerate(point_files):
                 break
         f.close()
     point_dist[step] = point_cloud
-pressure_list = []
+pressure_list = []  # x y z p nx ny nz
 with open(pressure_dir, "r") as f:
     csv_reader = csv.reader(f)
     for step, row in enumerate(csv_reader):
@@ -49,14 +48,23 @@ with open(pressure_dir, "r") as f:
 
 operations = point_dist[cut_slice]
 operations = np.array(operations, dtype=np.float32)  # shape=(n, 3)
-print("x", np.max(operations[:, 0]), np.min(operations[:, 0]))
-print("y", np.max(operations[:, 1]), np.min(operations[:, 1]))
-print("z", np.max(operations[:, 2]), np.min(operations[:, 2]))
+x_max, x_min = np.max(operations[:, 0]), np.min(operations[:, 0])
+y_max, y_min = np.max(operations[:, 1]), np.min(operations[:, 1])
+z_max, z_min = np.max(operations[:, 2]), np.min(operations[:, 2])
+
+print("x", x_max, x_min)
+print("y", y_max, y_min)
+print("z", z_max, z_min)
 print(len(operations))
 print(len(pressure_list))
+target_pressure = []  # 0.725s cost, CPU = i7-10850H
+for item in pressure_list:
+    if x_min < item[0] < x_max and y_min < item[1] < y_max and z_min < item[2] < z_max:
+        target_pressure.append(item)
 
+print(len(target_pressure))
 input()
-
-
-
+# TODO calculate pairs
+# TODO save pairs in cache
+# TODO finish todo in starter.58, combine data in cache, generate output-file and clear cache.
 
