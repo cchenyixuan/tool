@@ -2,6 +2,7 @@ import os
 import json
 import time
 import re
+import csv
 
 
 def solve(**kwargs):
@@ -20,7 +21,8 @@ def solve(**kwargs):
     pressure = kwargs["pressure"]  # dict{i:path_i}
 
     find_pyw = re.compile(r"pyw.exe", re.S)
-    if solver is "pressure_purifier.pyw":
+    find_time_slice = re.compile(r"(.+)-(.+).csv", re.S)
+    if solver == "pressure_purifier.pyw":
         for i in time_step:
             while True:
                 running_pyw = os.popen('wmic process get description, processid').read()
@@ -44,19 +46,12 @@ def solve(**kwargs):
 
             para = "temp.bat {} {} {} {}".format(data[0], data[1], data[2], data[3])
             os.system(para)
-    if solver is "distance_clip_pressure_purifier.pyw":
+    if solver == "distance_clip_pressure_purifier.pyw":
         slices = kwargs["slices"]
+        create_dir("./data/pressure/{}_purified_test".format(case_name))
         for i in time_step:
             # check i time step done
-            while True:
-                running_pyw = os.popen('wmic process get description, processid').read()
-                running_pyw = len(re.findall(find_pyw, running_pyw))
-                if running_pyw >= 1:
-                    time.sleep(5)
-                else:
-                    print("Done with time-step-{}".format(i))
-                    # TODO collect output data and clean the caches
-                    break
+            input(i)
             for cut_slice in slices:
                 prof = [case_name, case_dir, cut_slice, i, pressure[i / 100]]
                 # [case_name, point_dir, cut_slice, time_step, pressure_dir]
@@ -83,6 +78,43 @@ def solve(**kwargs):
 
                 para = "temp.bat {} {} {} {} {}".format(data[0], data[1], data[2], data[3], data[4])
                 os.system(para)
+            while True:
+                time.sleep(5)
+                running_pyw = os.popen('wmic process get description, processid').read()
+                running_pyw = len(re.findall(find_pyw, running_pyw))
+                if running_pyw >= 1:
+                    pass
+                else:
+                    break
+
+            # TODO collect output data and clean the caches
+            temp_files = os.listdir("./cache")
+            file_dict = {}
+            for item in temp_files:
+                t, s = re.findall(find_time_slice, item)[0]
+                file_dict[int(s)] = "./cache/" + item
+            dataframe = []
+            opt_list = list(file_dict.keys())
+            opt_list.sort()
+            for index in opt_list:
+                with open(file_dict[index], "r") as f:
+                    csv_reader = csv.reader(f)
+                    for row in csv_reader:
+                        dataframe.append(row)
+                    f.close()
+            with open("./data/pressure/{}_purified_test/{}.csv".format(case_name, float(i / 100)), "w",
+                      newline="") as f:
+                csv_writer = csv.writer(f)
+                for row in dataframe:
+                    csv_writer.writerow(row)
+                f.close()
+            print("Done with time-step-{}".format(i))
+            print("clear cache...")
+            for item in temp_files:
+                os.remove("./cache/" + item)
+            print("Done!")
+            time.sleep(5)
+
         pass
 
     # check if run as background
@@ -107,3 +139,12 @@ def check_background():
             print("Task completed!")
             break
         time.sleep(10)
+
+
+def create_dir(directory):
+    try:
+        path = directory
+        os.makedirs(path)
+    except FileExistsError:
+        print("dir '{}' already exists, skip...".format(path))
+        pass

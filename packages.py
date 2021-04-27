@@ -10,7 +10,8 @@ class Names:
                           "Mie02_10": "./data/zio/M02_10slices_zio/",
                           "Mie03_twin": "./data/zio/M03_2020_twins_zio_AS/"}
 
-        self.pressure_file = {"Mie02": "M02_Pressure_100.csv"}
+        self.pressure_file = {"Mie02": "M02_Pressure_100.csv",
+                              "Mie02_10": "M02_Pressure_100.csv"}
 
         self.cases_name_rule = {"Mie02": "Mie_case02_{}.csv",
                                 "Mie03": "MIe_case03_a_{}.csv",
@@ -236,11 +237,14 @@ class DeepAnalysis(Analysis):
                 self.cases_pressure_dir[self.data_name] + "/" + pressure_file
         pass
 
-    def purify_pressure(self, time_step=None):
+    def purify_pressure(self, time_step=[1,2]):
         if time_step is None:
             time_step = [i for i in range(100)]
         import starter
-        starter.solve(solver="pressure_purifier.pyw", time_step=time_step,
+        #starter.solve(solver="pressure_purifier.pyw", time_step=time_step,
+        #              case_name=self.data_name, slices=list(self.data.keys()),
+        #              case_dir=self.cases_dir[self.data_name], pressure=self.pressure, background="bear")
+        starter.solve(solver="distance_clip_pressure_purifier.pyw", time_step=time_step,
                       case_name=self.data_name, slices=list(self.data.keys()),
                       case_dir=self.cases_dir[self.data_name], pressure=self.pressure, background="bear")
         pass
@@ -402,5 +406,5 @@ class Gui:
         root.mainloop()
 
 
-a = Analysis("Mie02")
+a = DeepAnalysis("Mie02_10")
 Console()
