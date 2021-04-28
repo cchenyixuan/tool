@@ -48,12 +48,12 @@ def solve(**kwargs):
             os.system(para)
     if solver == "distance_clip_pressure_purifier.pyw":
         slices = kwargs["slices"]
-        create_dir("./data/pressure/{}_purified_test".format(case_name))
+        create_dir("./data/pressure/{}_purified".format(case_name))
         for i in time_step:
             # check i time step done
             input(i)
             for cut_slice in slices:
-                prof = [case_name, case_dir, cut_slice, i, pressure[i / 100]]
+                prof = [case_name, case_dir, cut_slice, i, pressure[float("{0:.2f}".format(i/100))]]
                 # [case_name, point_dir, cut_slice, time_step, pressure_dir]
 
                 while True:
@@ -102,7 +102,7 @@ def solve(**kwargs):
                     for row in csv_reader:
                         dataframe.append(row)
                     f.close()
-            with open("./data/pressure/{}_purified_test/{}.csv".format(case_name, float(i / 100)), "w",
+            with open("./data/pressure/{}_purified/{}.csv".format(case_name, float("{0:.2f}".format(i/100))), "w",
                       newline="") as f:
                 csv_writer = csv.writer(f)
                 for row in dataframe:

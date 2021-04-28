@@ -8,15 +8,18 @@ class Names:
         self.cases_dir = {"Mie02": "./data/zio/Mie_case02_retry_20200516_after_sorting/",
                           "Mie03": "./data/zio/Mie_case03_WL204_3rd_growing_after_sorting/",
                           "Mie02_10": "./data/zio/M02_10slices_zio/",
-                          "Mie03_twin": "./data/zio/M03_2020_twins_zio_AS/"}
+                          "Mie03_twin": "./data/zio/M03_2020_twins_zio_AS/",
+                          "MI02": "./data/zio/MI02_WL266_ab_AS/"}
 
         self.pressure_file = {"Mie02": "M02_Pressure_100.csv",
-                              "Mie02_10": "M02_Pressure_100.csv"}
+                              "Mie02_10": "M02_Pressure_100.csv"
+                              }
 
         self.cases_name_rule = {"Mie02": "Mie_case02_{}.csv",
                                 "Mie03": "MIe_case03_a_{}.csv",
                                 "Mie02_10": "Mie_case02_{}.csv",
-                                "Mie03_twin": "M03_2020_{}.csv"}
+                                "Mie03_twin": "M03_2020_{}.csv",
+                                "MI02": "MI02_WL266_ab_{}.csv"}
 
         self.cases_cardio_circle = {"Mie02": 0.804,
                                     "Mie03": 0.804,
@@ -208,7 +211,10 @@ class DeepAnalysis(Analysis):
         self.pressure = {}
         self.purified_pressure = {}
         self.load_pressure()
-        self.ode_data = []
+        self.ode_data_x = []
+        self.ode_data_y = []
+        self.ode_data_z = []
+        self.ode_data_norm = []
 
     def load_pressure(self):
         """load pressure data"""
@@ -237,7 +243,7 @@ class DeepAnalysis(Analysis):
                 self.cases_pressure_dir[self.data_name] + "/" + pressure_file
         pass
 
-    def purify_pressure(self, time_step=[1,2]):
+    def purify_pressure(self, time_step=None):
         if time_step is None:
             time_step = [i for i in range(100)]
         import starter
@@ -301,8 +307,12 @@ class DeepAnalysis(Analysis):
                     f.close()
                 self.full_dataset["data"][step] = np.array(data, dtype=np.float32)
         for index in range(point_index):
-            A = np.zeros([98, 2])
-            B = np.zeros([98, 1])
+            Ax = np.zeros([98, 1])
+            Bx = np.zeros([98, 1])
+            Ay = np.zeros([98, 1])
+            By = np.zeros([98, 1])
+            Az = np.zeros([98, 1])
+            Bz = np.zeros([98, 1])
             for time_step in range(len(self.purified_pressure.keys())-2):
                 point_cloud1 = self.full_dataset["data"][time_step][index, :3]
                 point_cloud2 = self.full_dataset["data"][time_step+1][index, :3]
@@ -315,17 +325,49 @@ class DeepAnalysis(Analysis):
                 dx = 0.5 * (dx1 + dx2)
                 v = dx / t
                 a_ = (dx2 - dx1) / t ** 2
-                A[time_step, 0] = np.linalg.norm(a_) * 1
-                A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
+                Ax[time_step, 0] = abs(a_[0])
+                Bx[time_step] = abs(pressure * normal[0])
+                Ay[time_step, 0] = abs(a_[1])
+                By[time_step] = abs(pressure * normal[1])
+                Az[time_step, 0] = abs(a_[2])
+                Bz[time_step] = abs(pressure * normal[2])
+                #A[time_step, 0] = np.linalg.norm(a_) * 1
+                #A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
                 #A[time_step, 2] = np.linalg.norm(dx) * ((a_ / np.linalg.norm(a_)) @ (dx / np.linalg.norm(dx)))
-                B[time_step] = np.linalg.norm(pressure * normal @ (a_ / np.linalg.norm(a_)))
-            ans = np.linalg.solve(A.T @ A, A.T @ B)
-            self.ode_data.append(ans)
+                #B[time_step] = np.linalg.norm(pressure * normal @ (a_ / np.linalg.norm(a_)))
+            ans_x = np.linalg.solve(Ax.T @ Ax, Ax.T @ Bx)
+            self.ode_data_x.append(ans_x)
+            ans_y = np.linalg.solve(Ay.T @ Ay, Ay.T @ By)
+            self.ode_data_y.append(ans_y)
+            ans_z = np.linalg.solve(Az.T @ Az, Az.T @ Bz)
+            self.ode_data_z.append(ans_z)
+            self.ode_data_norm.append(np.sqrt(ans_x**2+ans_y**2+ans_z**2))
         import csv
         base_data = self.full_dataset["data"][0][:, :3]
-        with open("./"+self.data_name+"/mass-redu.csv", "w", newline="") as f:
+        with open("./"+self.data_name+"/mass-x.csv", "w", newline="") as f:
             csv_writer = csv.writer(f)
-            for step, row in enumerate(zip(base_data, self.ode_data)):
+            for step, row in enumerate(zip(base_data, self.ode_data_x)):
+                row = [float(item) for sublist in row for item in sublist]
+                csv_writer.writerow(row)
+            f.close()
+        base_data = self.full_dataset["data"][0][:, :3]
+        with open("./" + self.data_name + "/mass-y.csv", "w", newline="") as f:
+            csv_writer = csv.writer(f)
+            for step, row in enumerate(zip(base_data, self.ode_data_y)):
+                row = [float(item) for sublist in row for item in sublist]
+                csv_writer.writerow(row)
+            f.close()
+        base_data = self.full_dataset["data"][0][:, :3]
+        with open("./" + self.data_name + "/mass-z.csv", "w", newline="") as f:
+            csv_writer = csv.writer(f)
+            for step, row in enumerate(zip(base_data, self.ode_data_z)):
+                row = [float(item) for sublist in row for item in sublist]
+                csv_writer.writerow(row)
+            f.close()
+        base_data = self.full_dataset["data"][0][:, :3]
+        with open("./" + self.data_name + "/mass-norm.csv", "w", newline="") as f:
+            csv_writer = csv.writer(f)
+            for step, row in enumerate(zip(base_data, self.ode_data_norm)):
                 row = [float(item) for sublist in row for item in sublist]
                 csv_writer.writerow(row)
             f.close()
@@ -406,5 +448,7 @@ class Gui:
         root.mainloop()
 
 
-a = DeepAnalysis("Mie02_10")
+a = DeepAnalysis("Mie02")
+a.analysis_ode()
+
 Console()
