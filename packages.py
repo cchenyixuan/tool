@@ -35,6 +35,7 @@ class Names:
         self.data_name = ""
         self.data = {}
         self.movement_data = {}
+        self.point_number = 0
 
 
 class DataManager(Names):
@@ -78,6 +79,12 @@ class DataManager(Names):
         else:
             for file in files:
                 self.movement_data[file[:-4]] = self.project_dir + "/" + file
+
+    def load_point_number(self):
+        # load point number
+        for i in range(1, len(self.data.keys()) + 1):
+            self.point_number += len(a.data[i][0])/3
+        self.point_number = int(self.point_number)
 
     def show(self, time_index):
         import numpy as np
@@ -284,7 +291,7 @@ class DeepAnalysis(Analysis):
 
         pass
 
-    def analysis_ode(self, point_index=29171):
+    def analysis_ode(self):
         print("Here is DataManager.Analysis.DeepAnalysis.analysis_ode!")
         t = 0.01
         import numpy as np
@@ -306,12 +313,12 @@ class DeepAnalysis(Analysis):
                         data.append(row)
                     f.close()
                 self.full_dataset["data"][step] = np.array(data, dtype=np.float32)
-        for index in range(point_index):
-            Ax = np.zeros([98, 1])
+        for index in range(self.point_number):
+            Ax = np.zeros([98, 2])
             Bx = np.zeros([98, 1])
-            Ay = np.zeros([98, 1])
+            Ay = np.zeros([98, 2])
             By = np.zeros([98, 1])
-            Az = np.zeros([98, 1])
+            Az = np.zeros([98, 2])
             Bz = np.zeros([98, 1])
             for time_step in range(len(self.purified_pressure.keys())-2):
                 point_cloud1 = self.full_dataset["data"][time_step][index, :3]
@@ -326,46 +333,49 @@ class DeepAnalysis(Analysis):
                 v = dx / t
                 a_ = (dx2 - dx1) / t ** 2
                 Ax[time_step, 0] = abs(a_[0])
+                Ax[time_step, 1] = v[0]
                 Bx[time_step] = abs(pressure * normal[0])
                 Ay[time_step, 0] = abs(a_[1])
+                Ay[time_step, 1] = v[1]
                 By[time_step] = abs(pressure * normal[1])
                 Az[time_step, 0] = abs(a_[2])
+                Az[time_step, 1] = v[2]
                 Bz[time_step] = abs(pressure * normal[2])
                 #A[time_step, 0] = np.linalg.norm(a_) * 1
                 #A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
                 #A[time_step, 2] = np.linalg.norm(dx) * ((a_ / np.linalg.norm(a_)) @ (dx / np.linalg.norm(dx)))
                 #B[time_step] = np.linalg.norm(pressure * normal @ (a_ / np.linalg.norm(a_)))
             ans_x = np.linalg.solve(Ax.T @ Ax, Ax.T @ Bx)
-            self.ode_data_x.append(ans_x)
+            self.ode_data_x.append([float(ans_x[0]), float(ans_x[1])])
             ans_y = np.linalg.solve(Ay.T @ Ay, Ay.T @ By)
-            self.ode_data_y.append(ans_y)
+            self.ode_data_y.append([float(ans_y[0]), float(ans_y[1])])
             ans_z = np.linalg.solve(Az.T @ Az, Az.T @ Bz)
-            self.ode_data_z.append(ans_z)
-            self.ode_data_norm.append(np.sqrt(ans_x**2+ans_y**2+ans_z**2))
+            self.ode_data_z.append([float(ans_z[0]), float(ans_z[1])])
+            self.ode_data_norm.append([np.sqrt(ans_x[0]**2+ans_y[0]**2+ans_z[0]**2), np.sqrt(ans_x[1]**2+ans_y[1]**2+ans_z[1]**2)])
         import csv
         base_data = self.full_dataset["data"][0][:, :3]
-        with open("./"+self.data_name+"/mass-x.csv", "w", newline="") as f:
+        with open("./"+self.data_name+"/mass_redu-x.csv", "w", newline="") as f:
             csv_writer = csv.writer(f)
             for step, row in enumerate(zip(base_data, self.ode_data_x)):
                 row = [float(item) for sublist in row for item in sublist]
                 csv_writer.writerow(row)
             f.close()
         base_data = self.full_dataset["data"][0][:, :3]
-        with open("./" + self.data_name + "/mass-y.csv", "w", newline="") as f:
+        with open("./" + self.data_name + "/mass_redu-y.csv", "w", newline="") as f:
             csv_writer = csv.writer(f)
             for step, row in enumerate(zip(base_data, self.ode_data_y)):
                 row = [float(item) for sublist in row for item in sublist]
                 csv_writer.writerow(row)
             f.close()
         base_data = self.full_dataset["data"][0][:, :3]
-        with open("./" + self.data_name + "/mass-z.csv", "w", newline="") as f:
+        with open("./" + self.data_name + "/mass_redu-z.csv", "w", newline="") as f:
             csv_writer = csv.writer(f)
             for step, row in enumerate(zip(base_data, self.ode_data_z)):
                 row = [float(item) for sublist in row for item in sublist]
                 csv_writer.writerow(row)
             f.close()
         base_data = self.full_dataset["data"][0][:, :3]
-        with open("./" + self.data_name + "/mass-norm.csv", "w", newline="") as f:
+        with open("./" + self.data_name + "/mass_redu-norm.csv", "w", newline="") as f:
             csv_writer = csv.writer(f)
             for step, row in enumerate(zip(base_data, self.ode_data_norm)):
                 row = [float(item) for sublist in row for item in sublist]
@@ -449,6 +459,6 @@ class Gui:
 
 
 a = DeepAnalysis("Mie02")
-a.analysis_ode()
+
 
 Console()

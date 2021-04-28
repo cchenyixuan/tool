@@ -8,6 +8,7 @@ Created on Fri Feb  5 18:40:18 2021
 import numpy as np
 import open3d as o3d
 import re
+import csv
 import traceback
 
 
@@ -85,10 +86,10 @@ def plot(file_name):
 
         data = []
         with open(file_name, 'r') as file:
-            for step, row in enumerate(file):
+            csv_reader = csv.reader(file)
+            for step, row in enumerate(csv_reader):
                 try:
-                    temp = re.findall(find_coord_relaxed, row)
-                    temp = list(temp[0])
+                    temp = row
                 except IndexError:
                     print('weird number at {}, try to use relaxed re.'.format(step + 1))
                     temp = re.findall(find_coord_relaxed_with_zero, row)
