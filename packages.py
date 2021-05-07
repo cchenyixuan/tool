@@ -12,8 +12,8 @@ class Names:
                           "MI02": "./data/zio/MI02_WL266_ab_AS/"}
 
         self.pressure_file = {"Mie02": "M02_Pressure_100.csv",
-                              "Mie02_10": "M02_Pressure_100.csv"
-                              }
+                              "Mie02_10": "M02_Pressure_100.csv",
+                              "Mie03": "M02_Pressure_100.csv"}
 
         self.cases_name_rule = {"Mie02": "Mie_case02_{}.csv",
                                 "Mie03": "MIe_case03_a_{}.csv",
@@ -63,6 +63,7 @@ class DataManager(Names):
                     self.data[index][step - 1] = row[2:]
         # call load_output to refresh present states
         self.load_output()
+        self.load_point_number()
 
     def load_output(self):
         # load output data
@@ -83,7 +84,7 @@ class DataManager(Names):
     def load_point_number(self):
         # load point number
         for i in range(1, len(self.data.keys()) + 1):
-            self.point_number += len(a.data[i][0])/3
+            self.point_number += len(self.data[i][0]) / 3
         self.point_number = int(self.point_number)
 
     def show(self, time_index):
@@ -147,15 +148,6 @@ class DataManager(Names):
         else:
             o3d.io.write_triangle_mesh("./mesh/" + self.data_name + "/" + name.format(time_index),
                                        poisson_mesh)  # a method not cropping the mesh
-
-
-class Test:
-    def __init__(self):
-        print(1)
-        self.book = {1: 2}
-
-    def test(self):
-        print("This is Test.test!")
 
 
 # Done
@@ -222,6 +214,7 @@ class DeepAnalysis(Analysis):
         self.ode_data_y = []
         self.ode_data_z = []
         self.ode_data_norm = []
+        self.ode_data_chen = []
 
     def load_pressure(self):
         """load pressure data"""
@@ -254,7 +247,7 @@ class DeepAnalysis(Analysis):
         if time_step is None:
             time_step = [i for i in range(100)]
         import starter
-        #starter.solve(solver="pressure_purifier.pyw", time_step=time_step,
+        # starter.solve(solver="pressure_purifier.pyw", time_step=time_step,
         #              case_name=self.data_name, slices=list(self.data.keys()),
         #              case_dir=self.cases_dir[self.data_name], pressure=self.pressure, background="bear")
         starter.solve(solver="distance_clip_pressure_purifier.pyw", time_step=time_step,
@@ -291,8 +284,14 @@ class DeepAnalysis(Analysis):
 
         pass
 
-    def analysis_ode(self):
+    def analysis_ode(self, model="a"):
         print("Here is DataManager.Analysis.DeepAnalysis.analysis_ode!")
+        print("Using model {}".format(model))
+        self.ode_data_x = []
+        self.ode_data_y = []
+        self.ode_data_z = []
+        self.ode_data_norm = []
+        self.ode_data_chen = []
         t = 0.01
         import numpy as np
         import os
@@ -302,91 +301,128 @@ class DeepAnalysis(Analysis):
         data_index = list(self.purified_pressure.keys())
         data_index.sort()
 
-        if self.full_dataset["data"] != {}:
+        for step in range(len(data_index)):
+            data = []
+            with open(self.purified_pressure[data_index[step]], "r") as f:
+                csv_reader = csv.reader(f)
+                for row in csv_reader:
+                    data.append(row)
+                f.close()
+            self.full_dataset["data"][step] = np.array(data, dtype=np.float32)
+
+        def save_data(ode_data, name):
+            import csv
+            base_data = self.full_dataset["data"][0][:, :3]
+            with open("./" + self.data_name + "/{}.csv".format(name), "w", newline="") as f:
+                csv_writer = csv.writer(f)
+                for row_ in zip(base_data, ode_data):
+                    row_ = [float(item) for sublist in row_ for item in sublist]
+                    csv_writer.writerow(row_)
+                f.close()
+
+        if model == "a":
+            for index in range(self.point_number - 100):
+                Ax = np.zeros([98, 1])
+                Bx = np.zeros([98, 1])
+                Ay = np.zeros([98, 1])
+                By = np.zeros([98, 1])
+                Az = np.zeros([98, 1])
+                Bz = np.zeros([98, 1])
+                A = np.zeros([98, 1])
+                B = np.zeros([98, 1])
+                for time_step in range(len(self.purified_pressure.keys()) - 2):
+                    point_cloud1 = self.full_dataset["data"][time_step][index, :3]
+                    point_cloud2 = self.full_dataset["data"][time_step + 1][index, :3]
+                    point_cloud3 = self.full_dataset["data"][time_step + 2][index, :3]
+                    pressure = self.full_dataset["data"][time_step + 1][index, 3] * 0.0001
+                    normal = self.full_dataset["data"][time_step + 1][index, 4:]
+                    # pressure assert to have same direction with a
+                    dx1 = point_cloud2 - point_cloud1
+                    dx2 = point_cloud3 - point_cloud2
+                    dx = 0.5 * (dx1 + dx2)
+                    v = dx / t
+                    a_ = (dx2 - dx1) / t ** 2
+
+                    Ax[time_step, 0] = abs(a_[0])
+                    Bx[time_step] = abs(pressure * normal[0])
+                    Ay[time_step, 0] = abs(a_[1])
+                    By[time_step] = abs(pressure * normal[1])
+                    Az[time_step, 0] = abs(a_[2])
+                    Bz[time_step] = abs(pressure * normal[2])
+
+                    A[time_step, 0] = np.linalg.norm(a_) * 1
+                    B[time_step] = np.linalg.norm(pressure * normal @ (a_ / np.linalg.norm(a_)))
+                    # A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
+                    # A[time_step, 2] = np.linalg.norm(dx) * ((a_ / np.linalg.norm(a_)) @ (dx / np.linalg.norm(dx)))
+                ans_x = np.linalg.solve(Ax.T @ Ax, Ax.T @ Bx)
+                self.ode_data_x.append([float(ans_x[0])])  # , float(ans_x[1])])
+                ans_y = np.linalg.solve(Ay.T @ Ay, Ay.T @ By)
+                self.ode_data_y.append([float(ans_y[0])])  # , float(ans_y[1])])
+                ans_z = np.linalg.solve(Az.T @ Az, Az.T @ Bz)
+                self.ode_data_z.append([float(ans_z[0])])  # , float(ans_z[1])])
+                self.ode_data_norm.append([np.sqrt(
+                    ans_x[0] ** 2 + ans_y[0] ** 2 + ans_z[0] ** 2)])  # , np.sqrt(ans_x[1]**2+ans_y[1]**2+ans_z[1]**2)])
+                ans_chen = np.linalg.solve(A.T @ A, A.T @ B)
+                self.ode_data_chen.append([float(ans_chen[0])])
+            save_data(self.ode_data_x, "m-x")
+            save_data(self.ode_data_y, "m-y")
+            save_data(self.ode_data_z, "m-z")
+            save_data(self.ode_data_norm, "m-norm")
+            save_data(self.ode_data_chen, "m-norm-c")
             pass
-        else:
-            for step in range(len(data_index)):
-                data = []
-                with open(self.purified_pressure[data_index[step]], "r") as f:
-                    csv_reader = csv.reader(f)
-                    for row in csv_reader:
-                        data.append(row)
-                    f.close()
-                self.full_dataset["data"][step] = np.array(data, dtype=np.float32)
-        for index in range(self.point_number):
-            Ax = np.zeros([98, 2])
-            Bx = np.zeros([98, 1])
-            Ay = np.zeros([98, 2])
-            By = np.zeros([98, 1])
-            Az = np.zeros([98, 2])
-            Bz = np.zeros([98, 1])
-            for time_step in range(len(self.purified_pressure.keys())-2):
-                point_cloud1 = self.full_dataset["data"][time_step][index, :3]
-                point_cloud2 = self.full_dataset["data"][time_step+1][index, :3]
-                point_cloud3 = self.full_dataset["data"][time_step+2][index, :3]
-                pressure = self.full_dataset["data"][time_step+1][index, 3] * 0.0001
-                normal = self.full_dataset["data"][time_step+1][index, 4:]
-                # pressure assert to have same direction with a
-                dx1 = point_cloud2 - point_cloud1
-                dx2 = point_cloud3 - point_cloud2
-                dx = 0.5 * (dx1 + dx2)
-                v = dx / t
-                a_ = (dx2 - dx1) / t ** 2
-                Ax[time_step, 0] = abs(a_[0])
-                Ax[time_step, 1] = v[0]
-                Bx[time_step] = abs(pressure * normal[0])
-                Ay[time_step, 0] = abs(a_[1])
-                Ay[time_step, 1] = v[1]
-                By[time_step] = abs(pressure * normal[1])
-                Az[time_step, 0] = abs(a_[2])
-                Az[time_step, 1] = v[2]
-                Bz[time_step] = abs(pressure * normal[2])
-                #A[time_step, 0] = np.linalg.norm(a_) * 1
-                #A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
-                #A[time_step, 2] = np.linalg.norm(dx) * ((a_ / np.linalg.norm(a_)) @ (dx / np.linalg.norm(dx)))
-                #B[time_step] = np.linalg.norm(pressure * normal @ (a_ / np.linalg.norm(a_)))
-            ans_x = np.linalg.solve(Ax.T @ Ax, Ax.T @ Bx)
-            self.ode_data_x.append([float(ans_x[0]), float(ans_x[1])])
-            ans_y = np.linalg.solve(Ay.T @ Ay, Ay.T @ By)
-            self.ode_data_y.append([float(ans_y[0]), float(ans_y[1])])
-            ans_z = np.linalg.solve(Az.T @ Az, Az.T @ Bz)
-            self.ode_data_z.append([float(ans_z[0]), float(ans_z[1])])
-            self.ode_data_norm.append([np.sqrt(ans_x[0]**2+ans_y[0]**2+ans_z[0]**2), np.sqrt(ans_x[1]**2+ans_y[1]**2+ans_z[1]**2)])
-        import csv
-        base_data = self.full_dataset["data"][0][:, :3]
-        with open("./"+self.data_name+"/mass_redu-x.csv", "w", newline="") as f:
-            csv_writer = csv.writer(f)
-            for step, row in enumerate(zip(base_data, self.ode_data_x)):
-                row = [float(item) for sublist in row for item in sublist]
-                csv_writer.writerow(row)
-            f.close()
-        base_data = self.full_dataset["data"][0][:, :3]
-        with open("./" + self.data_name + "/mass_redu-y.csv", "w", newline="") as f:
-            csv_writer = csv.writer(f)
-            for step, row in enumerate(zip(base_data, self.ode_data_y)):
-                row = [float(item) for sublist in row for item in sublist]
-                csv_writer.writerow(row)
-            f.close()
-        base_data = self.full_dataset["data"][0][:, :3]
-        with open("./" + self.data_name + "/mass_redu-z.csv", "w", newline="") as f:
-            csv_writer = csv.writer(f)
-            for step, row in enumerate(zip(base_data, self.ode_data_z)):
-                row = [float(item) for sublist in row for item in sublist]
-                csv_writer.writerow(row)
-            f.close()
-        base_data = self.full_dataset["data"][0][:, :3]
-        with open("./" + self.data_name + "/mass_redu-norm.csv", "w", newline="") as f:
-            csv_writer = csv.writer(f)
-            for step, row in enumerate(zip(base_data, self.ode_data_norm)):
-                row = [float(item) for sublist in row for item in sublist]
-                csv_writer.writerow(row)
-            f.close()
+        elif model == "av":
+            for index in range(self.point_number - 100):
+                Ax = np.zeros([98, 2])
+                Bx = np.zeros([98, 1])
+                Ay = np.zeros([98, 2])
+                By = np.zeros([98, 1])
+                Az = np.zeros([98, 2])
+                Bz = np.zeros([98, 1])
+                A = np.zeros([98, 2])
+                B = np.zeros([98, 1])
+                for time_step in range(len(self.purified_pressure.keys()) - 2):
+                    point_cloud1 = self.full_dataset["data"][time_step][index, :3]
+                    point_cloud2 = self.full_dataset["data"][time_step + 1][index, :3]
+                    point_cloud3 = self.full_dataset["data"][time_step + 2][index, :3]
+                    pressure = self.full_dataset["data"][time_step + 1][index, 3] * 0.0001
+                    normal = self.full_dataset["data"][time_step + 1][index, 4:]
+                    # pressure assert to have same direction with a
+                    dx1 = point_cloud2 - point_cloud1
+                    dx2 = point_cloud3 - point_cloud2
+                    dx = 0.5 * (dx1 + dx2)
+                    v = dx / t
+                    a_ = (dx2 - dx1) / t ** 2
+                    Ax[time_step, 0] = abs(a_[0])
+                    Ax[time_step, 1] = v[0]
+                    Bx[time_step] = abs(pressure * normal[0])
+                    Ay[time_step, 0] = abs(a_[1])
+                    Ay[time_step, 1] = v[1]
+                    By[time_step] = abs(pressure * normal[1])
+                    Az[time_step, 0] = abs(a_[2])
+                    Az[time_step, 1] = v[2]
+                    Bz[time_step] = abs(pressure * normal[2])
 
-            
-            
+                    A[time_step, 0] = np.linalg.norm(a_) * 1
+                    A[time_step, 1] = np.linalg.norm(v) * ((a_ / np.linalg.norm(a_)) @ (v / np.linalg.norm(v)))
+                    B[time_step] = np.linalg.norm(pressure * normal @ (a_ / np.linalg.norm(a_)))
+                ans_x = np.linalg.solve(Ax.T @ Ax, Ax.T @ Bx)
+                self.ode_data_x.append([float(ans_x[0]), float(ans_x[1])])
+                ans_y = np.linalg.solve(Ay.T @ Ay, Ay.T @ By)
+                self.ode_data_y.append([float(ans_y[0]), float(ans_y[1])])
+                ans_z = np.linalg.solve(Az.T @ Az, Az.T @ Bz)
+                self.ode_data_z.append([float(ans_z[0]), float(ans_z[1])])
+                self.ode_data_norm.append([np.sqrt(
+                    ans_x[0] ** 2 + ans_y[0] ** 2 + ans_z[0] ** 2),
+                    np.sqrt(ans_x[1] ** 2 + ans_y[1] ** 2 + ans_z[1] ** 2)])
+                ans_chen = np.linalg.solve(A.T @ A, A.T @ B)
+                self.ode_data_chen.append([float(ans_chen[0]), float(ans_chen[1])])
+            save_data(self.ode_data_x, "m-mu-x")
+            save_data(self.ode_data_y, "m-mu-y")
+            save_data(self.ode_data_z, "m-mu-z")
+            save_data(self.ode_data_norm, "m-mu-norm")
+            save_data(self.ode_data_chen, "m-mu-norm-c")
+            pass
 
-
-        # TODO ode model
         pass
 
     def analysis_ensemble_kalman_filter(self):
@@ -396,6 +432,298 @@ class DeepAnalysis(Analysis):
         # TODO EnKF model
         # TODO save analyzed data
         pass
+
+
+class Preprocessor(Analysis):
+    def __init__(self, data_name):
+        super().__init__(data_name)
+        """
+        p0=(x0,y0,z0)
+        v0=(ex,ey,ez)
+        p(x,y,z)
+        ((p+k*v0)-p0)@v0=0
+        ==>k=(p0-p)@v0/|v0|
+        ==>p`=p+k*v0
+
+        v0:(rcost,rsint,sqrt(1-r**2)), r in (0,1), t in (0,2pi)
+        p0:R*v0 + C(x~,y~,z~), Any constant R > max(|p-C|)
+
+        for p in geometry:
+            calculate p`
+        for all p`:
+            c`=avg(p`)
+        create resolution image
+        find maxlikelyhood distance(spin the image and calculate costfunction)
+
+        iteration until r and t calculated
+        figure out least cost
+        that direction is required
+
+        cost function:
+        cost = sum(0.5*sin(pi/180)*(cd-ab))
+        a,b,c,d = p1-c`,p2-c`,p3-c`,p4-c`
+
+        """
+
+    def project(self):
+        from PIL import Image
+        import numpy as np
+        raw_image = Image.open("M02shape.png")
+        image = np.array(raw_image, dtype=np.int32)
+        pad = np.zeros([image.shape[0] + 2, image.shape[1] + 2])
+        for i in range(image.shape[0]):
+            for j in range(image.shape[1]):
+                if image[i, j, 0] == image[i, j, 1] == image[i, j, 2] == 255:
+                    pass
+                else:
+                    pad[i + 1, j + 1] = 255
+        kernel = np.reshape(np.array([-1, -1, -1, -1, 8, -1, -1, -1, -1]), [9, 1])
+        boundary_image = np.zeros([image.shape[0], image.shape[1]])
+        for i in range(boundary_image.shape[0]):
+            for j in range(boundary_image.shape[1]):
+                value = np.reshape(pad[i:i + 3, j:j + 3], [1, 9]) @ kernel
+                boundary_image[i, j] += value
+
+        data = [self.data[key][0] for key in self.data.keys()]
+        data = [i[3 * j:3 * j + 3] for i in data for j in range(int(len(i) / 3 - 1))]
+        data = np.array(data, dtype=np.float32)
+        r_ = [0.1 * i for i in range(1, 11)]  # 0.1-1
+        t_ = [3.141592653589793 / 30 * i for i in range(60)]  # 0-2pi
+        c = np.array([np.mean(data[:, 0]), np.mean(data[:, 1]), np.mean(data[:, 2])])
+        R = 100
+
+        cost_ans = []
+        project_log = []
+        for r in r_:
+            for t in t_:
+                """
+                def the vector vertical with v0 and have max projection on z-axis as 'base yaxis' for image
+                x=-cos(t)*sqrt((1-r**2))
+                y=-sin(t)*sqrt((1-r**2))
+                z=r
+                def the vector vertical with v0, 'base yaxis' and satisfy right hand rule
+                x=-sin(t)
+                y=-cos(t)
+                z=0
+                """
+                v0 = np.array([r * np.cos(t), r * np.sin(t), np.sqrt(1 - r ** 2)])  # the other is -np.sqrt(1-a**2)
+                base_y_axis = np.array([-np.cos(t) * np.sqrt(1 - r ** 2), -np.sin(t) * np.sqrt(1 - r ** 2), r])
+                base_x_axis = np.array([-np.sin(t), np.cos(t), 0])
+
+                p0 = R * v0 + c
+                shadow = [p + (p0 - p) @ v0 * v0 for p in data]
+                shadow = np.array(shadow, dtype=np.float32)  # all points on a plane
+                center = np.array([np.mean(shadow[:, 0]), np.mean(shadow[:, 1]), np.mean(shadow[:, 2])])
+                image_array = np.zeros([548, 870])  # size of operation image
+                image_center = [548 / 2, 870 / 2]  # center of operation image boundary
+                relative_shadow = np.array([shadow[i] - center for i in range(shadow.shape[0])],
+                                           dtype=np.float32)  # delta x,y,z
+                # convert 3d(x,y,z) to 2d(x,y)
+                temp = np.array([[item @ base_x_axis, item @ base_y_axis] for item in relative_shadow])
+                dx = np.max(temp[:, 0]) - np.min(temp[:, 0])
+                dy = np.max(temp[:, 1]) - np.min(temp[:, 1])
+
+                resolution = min(dx, dy) / max(boundary_image.shape)
+                image_temp = []
+                for i in range(boundary_image.shape[0]):
+                    for j in range(boundary_image.shape[1]):
+                        if boundary_image[i, j] >= 200:
+                            image_temp.append([(j - 435) * resolution, (274 - i) * resolution])
+                # clear rubbish
+
+                opt_array = np.array(image_temp)
+                start_point = np.array([np.max(opt_array[:, 0]), 0])
+                clean_list = [start_point]
+                while True:
+                    max_distance = 0
+                    selected_point = 0
+                    cache = []
+                    for step, point in enumerate(image_temp):
+                        point = np.array(point)
+                        d = np.linalg.norm(point - start_point)
+                        if 4 * resolution > d:  # 4 is experience
+                            cache.append(step)
+                        if 4 * resolution > d > max_distance:
+                            selected_point = point
+                            max_distance = d
+                    try:
+                        assert type(selected_point) is np.ndarray
+                        clean_list.append(selected_point)
+                        cache.reverse()
+                        for item in cache:
+                            image_temp.pop(item)
+                        start_point = selected_point
+                    except AssertionError:
+                        break
+                print("clean_list_test_length:", len(clean_list))
+
+                # move image-center to center
+                image_temp = np.array(clean_list)
+                movement = np.array([np.mean(image_temp[:, 0]), np.mean(image_temp[:, 1])])
+                for i in range(image_temp.shape[0]):
+                    image_temp[i] -= movement
+
+                # debug
+                debug = []
+                for dbg in temp:
+                    debug.append([dbg[0], dbg[1], 0, 1])
+                for dbg in image_temp:
+                    debug.append([dbg[0], dbg[1], 0, 2])
+                import csv
+                with open("test{}-{}.csv".format(r, t), "w", newline="") as f:
+                    csv_writer = csv.writer(f)
+                    for row in debug:
+                        csv_writer.writerow(row)
+
+                print("image range:", np.max(image_temp[:, 0]), np.min(image_temp[:, 0]), np.max(image_temp[:, 1]),
+                      np.min(image_temp[:, 1]))
+
+                # TODO calculate cost function
+                point_pairs = []
+                for i in range(image_temp.shape[0]):
+                    p0 = image_temp[i]
+                    x0 = p0[0]
+                    y0 = p0[1]
+                    max_distance = 0
+                    p1 = 0
+                    for item in temp:
+                        x = item[0]
+                        y = item[1]
+                        if np.sign(x0) == np.sign(x) and np.sign(y0) == np.sign(y):
+                            if abs(y0 * (x - x0) - x0 * (y - y0)) <= 3 * resolution:
+                                d = np.linalg.norm(item)
+                                if d > max_distance:
+                                    p1 = item
+                                    max_distance = d
+                    try:
+                        assert type(p1) is np.ndarray
+                        point_pairs.append([p0, p1])
+                    except AssertionError:
+                        raise AssertionError
+                print("pairs length:", len(point_pairs))
+
+                # cost function:
+                last = 0
+                times = 0
+                res = []
+                log = []
+                while True:
+                    cost_list = []
+                    scale_history = 1
+
+                    for theta in [np.pi / 180 * i for i in range(360)]:
+                        spin = np.array([[np.cos(theta), -np.sin(theta)],
+                                         [np.sin(theta), np.cos(theta)]])
+                        cost = 0
+                        for i in range(len(point_pairs) - 1):
+                            p1, p3 = point_pairs[i].copy()
+                            p2, p4 = point_pairs[i + 1].copy()
+                            p1 = spin @ p1
+                            p2 = spin @ p2
+                            cost += abs(np.sin(np.pi * 2 / len(point_pairs)) *
+                                        (np.linalg.norm(p3) * np.linalg.norm(p4) -
+                                         np.linalg.norm(p1) * np.linalg.norm(p2)))
+                        cost_list.append(cost)
+                    print(min(cost_list))
+                    if times == 0:
+                        last = min(cost_list)
+                        times += 1
+                        scale_factor = 1.1
+                        scale_history *= scale_factor
+                        for i in range(len(point_pairs)):
+                            point_pairs[i][0] *= scale_factor
+                    else:
+                        if min(cost_list) >= last:
+                            scale_factor = 1 / scale_factor
+                        if min(cost_list) <= last:
+                            scale_factor = scale_factor
+                        scale_history *= scale_factor
+                        for i in range(len(point_pairs)):
+                            point_pairs[i][0] *= scale_factor
+                        last = min(cost_list)
+                        times += 1
+                    res.append(last)
+                    log.append([cost_list.index(min(cost_list)) * np.pi / 180, scale_history])  # theta, scale-history
+                    if times == 20:
+                        break
+
+                cost = int(min(res))
+
+                cost_ans.append(cost)
+                project_log.append([r, t, resolution, movement, *log[res.index(min(res))]])
+                print("min(cost_ans)")
+                print(min(cost_ans))
+                print(cost_ans)
+        print(min(cost_ans))
+        print(res)
+        print(cost_list)
+
+        # analysis cost:
+        r0 = project_log[cost_list.index(min(cost_list))][0]
+        t0 = project_log[cost_list.index(min(cost_list))][1]
+        resolution = project_log[cost_list.index(min(cost_list))][2]
+        move_vector = project_log[cost_list.index(min(cost_list))][3]
+        theta = project_log[cost_list.index(min(cost_list))][4]
+        scale_factor = project_log[cost_list.index(min(cost_list))][5]
+        print("r", r0, "t", t0, "resolution", resolution, "move", move_vector, "spin-angle", theta, "scale",
+              scale_factor)
+
+
+"""
+                import csv
+                with open("test1.csv", "w", newline="") as f:
+                    csv_writer = csv.writer(f)
+                    for i in range(temp.shape[0]):
+                        csv_writer.writerow(temp[i])
+                    for i in range(image_temp.shape[0]):
+                        csv_writer.writerow(image_temp[i])
+                dx = np.max(shadow[:, 0]) - np.min(shadow[:, 0])
+                dy = np.max(shadow[:, 1]) - np.min(shadow[:, 1])
+                dz = np.max(shadow[:, 2]) - np.min(shadow[:, 2])
+                resolution = np.sqrt(dx**2+dy**2+dz**2) / min(image_array.shape)  # length of tiny square
+
+                theta = [np.pi*2/2001*i for i in range(2000)]
+                temp = [[item @ base_x_axis, item @ base_y_axis] for item in relative_shadow]  # TODO important change 3d to 2d point cloud
+                index = []
+                for i in theta:
+                    max_distance = 0
+                    point_index = 0
+                    for step, j in enumerate(temp):
+
+                        if np.tan(i)<=j[1]/j[0]<=np.tan(i+np.pi*2/2001):
+                            distance = j[0]**2+j[1]**2
+                            if distance>max_distance:
+                                point_index = step
+                                max_distance = distance
+                    index.append(point_index)
+                print(index)
+                print(len(index))
+
+
+                votex = np.sqrt(3) / 3 * resolution
+                subsample = [shadow[i*10] for i in range(shadow.shape[0]//10)]
+                # up=274 down=273 left=435 right=434
+                for i in range(image_array.shape[0]):
+
+                    for j in range(image_array.shape[1]):
+
+                        cell_center = center + base_y_axis * resolution * (274-i) + base_x_axis * resolution * (j-435)
+                        min_x = cell_center[0] - votex
+                        max_x = cell_center[0] + votex
+                        min_y = cell_center[1] - votex
+                        max_y = cell_center[1] + votex
+                        min_z = cell_center[2] - votex
+                        max_z = cell_center[2] + votex
+                        for d in index:
+                            point = shadow[d]
+                            if min_x <= point[0] <= max_x and min_y <= point[1] <= max_y and min_z <= point[2] <= max_z:
+                                image_array[i, j] = 255
+                    if i%100==0:
+                        from PIL import Image
+                        image = Image.fromarray(image_array)
+                        image.show()
+
+"""
 
 
 class Console:
@@ -458,7 +786,7 @@ class Gui:
         root.mainloop()
 
 
-a = DeepAnalysis("Mie02")
-
+a = Preprocessor("Mie02")
+a.project()
 
 Console()
